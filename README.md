@@ -29,6 +29,7 @@ fatigue-monitor-system/
     ├── app.py            # Flask-сервер для панели диспетчера
     └── templates/
         └── dashboard.html # Веб-интерфейс мониторинга
+```
 
 ## ⚙️ Установка и запуск
 
