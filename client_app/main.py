@@ -5,24 +5,64 @@ import numpy as np
 from scipy.spatial import distance as dist
 from imutils import face_utils
 import time
-import winsound
 import threading
 import psycopg2
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
+import platform
+
+# ================= ОПРЕДЕЛЕНИЕ ОС =================
+IS_WINDOWS = platform.system() == "Windows"
+IS_MAC = platform.system() == "Darwin"
 
 # Загружаем переменные окружения из файла .env
 load_dotenv()
 
 # ================= ШРИФТ =================
-try:
-    FONT = ImageFont.truetype("arial.ttf", 20)
-    FONT_SMALL = ImageFont.truetype("arial.ttf", 16)
-    FONT_LARGE = ImageFont.truetype("arial.ttf", 24)
-except:
-    FONT = ImageFont.load_default()
-    FONT_SMALL = FONT
-    FONT_LARGE = FONT
+if platform.system() == "Darwin":
+    MAC_FONTS = [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+    ]
+    font_path = None
+    for font_file in MAC_FONTS:
+        if os.path.exists(font_file):
+            font_path = font_file
+            break
+    if font_path is None:
+        try:
+            FONT = ImageFont.truetype("Arial.ttf", 20)
+            FONT_SMALL = ImageFont.truetype("Arial.ttf", 16)
+            FONT_LARGE = ImageFont.truetype("Arial.ttf", 24)
+        except:
+            FONT = ImageFont.load_default()
+            FONT_SMALL = FONT
+            FONT_LARGE = FONT
+    else:
+        FONT = ImageFont.truetype(font_path, 20)
+        FONT_SMALL = ImageFont.truetype(font_path, 16)
+        FONT_LARGE = ImageFont.truetype(font_path, 24)
+elif platform.system() == "Windows":
+    try:
+        FONT = ImageFont.truetype("arial.ttf", 20)
+        FONT_SMALL = ImageFont.truetype("arial.ttf", 16)
+        FONT_LARGE = ImageFont.truetype("arial.ttf", 24)
+    except:
+        FONT = ImageFont.load_default()
+        FONT_SMALL = FONT
+        FONT_LARGE = FONT
+else:
+    # Для Linux и других систем используем шрифт по умолчанию
+    try:
+        FONT = ImageFont.truetype("DejaVuSans.ttf", 20)
+        FONT_SMALL = ImageFont.truetype("DejaVuSans.ttf", 16)
+        FONT_LARGE = ImageFont.truetype("DejaVuSans.ttf", 24)
+    except:
+        FONT = ImageFont.load_default()
+        FONT_SMALL = FONT
+        FONT_LARGE = FONT
 
 def put_text_rus(img, text, position, color=(255, 255, 255), font=FONT_SMALL):
     pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -37,7 +77,8 @@ conn = psycopg2.connect(
     database=os.getenv("DB_NAME", "fatigue_monitor"),
     user=os.getenv("DB_USER", "postgres"),
     password=os.getenv("DB_PASSWORD"), # Пароль берется из .env, дефолта нет для безопасности
-    port=os.getenv("DB_PORT", "5432")
+    port=os.getenv("DB_PORT", "5432"),
+    sslmode=os.getenv("DB_SSLMODE", "disable")
 )
 cursor = conn.cursor()
 
@@ -111,7 +152,9 @@ def draw_status_bar(frame, status, ear, thresh, perclos, blinks, session_time):
         "Микросон": "ВНИМАНИЕ! Прекратите работу!"
     }
     
-    cv2.rectangle(frame, (0, 0), (640, 140), (20, 20, 20), -1)
+    frame_height, frame_width = frame.shape[:2]
+    panel_height = max(int(frame_height * 0.15), 140)
+    cv2.rectangle(frame, (0, 0), (frame_width, panel_height), (20, 20, 20), -1)
     
     color = status_colors.get(status, (0, 0, 255))
     frame = put_text_rus(frame, f"[{status}]", (10, 5), color, FONT_LARGE)
@@ -122,21 +165,24 @@ def draw_status_bar(frame, status, ear, thresh, perclos, blinks, session_time):
     hours = int(session_time // 3600)
     minutes = int((session_time % 3600) // 60)
     frame = put_text_rus(frame, f"Сессия: {hours}ч {minutes}м", (10, 60), (200, 200, 200), FONT_SMALL)
+
+    #Правая часть панели - размещаем относительно ширины кадра
+    right_x = frame_width - 300
     
-    frame = put_text_rus(frame, f"EAR: {ear:.2f}", (350, 5), (0, 255, 255), FONT_SMALL)
-    frame = put_text_rus(frame, f"Порог: {thresh:.2f}", (350, 30), (0, 255, 0), FONT_SMALL)
+    frame = put_text_rus(frame, f"EAR: {ear:.2f}", (right_x, 5), (0, 255, 255), FONT_SMALL)
+    frame = put_text_rus(frame, f"Порог: {thresh:.2f}", (right_x, 30), (0, 255, 0), FONT_SMALL)
     
     perclos_percent = int(perclos * 100)
-    bar_width = int(perclos_percent * 1.5)
-    cv2.rectangle(frame, (350, 60), (350 + bar_width, 75), (0, 255, 0), -1)
-    cv2.rectangle(frame, (350, 60), (500, 75), (255, 255, 255), 1)
-    frame = put_text_rus(frame, f"PERCLOS: {perclos_percent}%", (350, 82), (255, 255, 0), FONT_SMALL)
+    bar_width = int(perclos_percent * 2)
+    cv2.rectangle(frame, (right_x, 60), (right_x + bar_width, 75), (0, 255, 0), -1)
+    cv2.rectangle(frame, (right_x, 60), (right_x + 150, 75), (255, 255, 255), 1)
+    frame = put_text_rus(frame, f"PERCLOS: {perclos_percent}%", (right_x, 82), (255, 255, 0), FONT_SMALL)
     
-    frame = put_text_rus(frame, f"Морганий: {blinks}", (350, 110), (255, 255, 255), FONT_SMALL)
+    frame = put_text_rus(frame, f"Морганий: {blinks}", (right_x, 110), (255, 255, 255), FONT_SMALL)
     
     return frame
 
-# ================= SOUND =================
+# ================= SOUND (Кроссплатформенный) =================
 alarm_active = False
 last_beep_time = 0
 
@@ -144,7 +190,12 @@ def play_microsleep_alarm():
     global alarm_active
     alarm_active = True
     while alarm_active:
-        winsound.Beep(2500, 700)
+        if IS_WINDOWS:
+            import winsound
+            winsound.Beep(2500, 700)
+        elif IS_MAC:
+            os.system('afplay /System/Library/Sounds/Ping.aiff')
+        time.sleep(0.8)
 
 def stop_alarm():
     global alarm_active
@@ -155,9 +206,15 @@ def play_warning_beep():
     if time.time() - last_beep_time < 2:
         return
     last_beep_time = time.time()
-    for _ in range(3):
-        winsound.Beep(2000, 150)
-        time.sleep(0.1)
+    if IS_WINDOWS:
+        import winsound
+        for _ in range(3):
+            winsound.Beep(2000, 150)
+            time.sleep(0.1)
+    elif IS_MAC:
+        for _ in range(3):
+            os.system('afplay /System/Library/Sounds/Ping.aiff &')
+            time.sleep(0.1)
 
 # ================= НАСТРОЙКИ =================
 MIN_BLINK_DURATION = 0.08
