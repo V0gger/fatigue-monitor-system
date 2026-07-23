@@ -7,3 +7,11 @@
    *.sql.bak.env
 .env
 .env.*
+venv/
+.DS_Store
+*.dat
+test_neon.py
+venv/
+.DS_Store
+*.dat
+test_neon.py
