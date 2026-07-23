@@ -4,4 +4,4 @@
    *.dat
    venv/
    .idea/
-   *.sql.bak
+   *.sql.bak.env

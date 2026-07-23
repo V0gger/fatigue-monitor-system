@@ -18,6 +18,58 @@ IS_MAC = platform.system() == "Darwin"
 # Загружаем переменные окружения из файла .env
 load_dotenv()
 
+# ================= АДАПТИВНЫЙ UI =================
+# Базовое разрешение, под которое писался оригинальный UI
+BASE_FRAME_WIDTH = 640
+BASE_FRAME_HEIGHT = 480
+
+def get_ui_scale(frame):
+    """Вычисляет коэффициент масштабирования UI относительно базового разрешения"""
+    frame_height, frame_width = frame.shape[:2]
+    # Используем высоту как основной параметр масштабирования
+    height_scale = frame_height / BASE_FRAME_HEIGHT
+    width_scale = frame_width / BASE_FRAME_WIDTH
+    # Берем среднее значение для баланса
+    return (height_scale + width_scale) / 2
+
+def get_scaled_font(base_size, scale):
+    """Возвращает масштабированный шрифт"""
+    scaled_size = int(base_size * scale)
+    # Ограничиваем минимальный и максимальный размер
+    scaled_size = max(12, min(scaled_size, 72))  # От 12 до 72 пикселей
+    
+    if platform.system() == "Darwin":
+        MAC_FONTS = [
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ]
+        font_path = None
+        for font_file in MAC_FONTS:
+            if os.path.exists(font_file):
+                font_path = font_file
+                break
+        
+        if font_path is None:
+            try:
+                return ImageFont.truetype("Arial.ttf", scaled_size)
+            except:
+                return ImageFont.load_default()
+        else:
+            return ImageFont.truetype(font_path, scaled_size)
+            
+    elif platform.system() == "Windows":
+        try:
+            return ImageFont.truetype("arial.ttf", scaled_size)
+        except:
+            return ImageFont.load_default()
+    else:
+        try:
+            return ImageFont.truetype("DejaVuSans.ttf", scaled_size)
+        except:
+            return ImageFont.load_default()
+
 # ================= ШРИФТ =================
 if platform.system() == "Darwin":
     MAC_FONTS = [
@@ -153,32 +205,38 @@ def draw_status_bar(frame, status, ear, thresh, perclos, blinks, session_time):
     }
     
     frame_height, frame_width = frame.shape[:2]
-    panel_height = max(int(frame_height * 0.15), 140)
+    scale = get_ui_scale(frame)
+    #Масштабируем элементы UI
+    panel_height = max(int(140 * scale), 100)
+    font_large = get_scaled_font(24, scale)
+    font_small = get_scaled_font(16, scale)
+    font_normal = get_scaled_font(20, scale)
+    left_margin = int(10 * scale)
+    right_x = frame_width - int(300 * scale)
     cv2.rectangle(frame, (0, 0), (frame_width, panel_height), (20, 20, 20), -1)
     
     color = status_colors.get(status, (0, 0, 255))
-    frame = put_text_rus(frame, f"[{status}]", (10, 5), color, FONT_LARGE)
+    frame = put_text_rus(frame, f"[{status}]", (left_margin, int(5 * scale)), color, font_large)
     
     rec = recommendations.get(status, "")
-    frame = put_text_rus(frame, rec, (10, 35), (255, 255, 255), FONT_SMALL)
+    frame = put_text_rus(frame, rec, (left_margin, int(35 * scale)), (255, 255, 255), font_small)
     
     hours = int(session_time // 3600)
     minutes = int((session_time % 3600) // 60)
-    frame = put_text_rus(frame, f"Сессия: {hours}ч {minutes}м", (10, 60), (200, 200, 200), FONT_SMALL)
+    frame = put_text_rus(frame, f"Сессия: {hours}ч {minutes}м", (left_margin, int(60 * scale)), (200, 200, 200), font_small)
 
     #Правая часть панели - размещаем относительно ширины кадра
-    right_x = frame_width - 300
-    
-    frame = put_text_rus(frame, f"EAR: {ear:.2f}", (right_x, 5), (0, 255, 255), FONT_SMALL)
-    frame = put_text_rus(frame, f"Порог: {thresh:.2f}", (right_x, 30), (0, 255, 0), FONT_SMALL)
+    frame = put_text_rus(frame, f"EAR: {ear:.2f}", (right_x, int(5 * scale)), (0, 255, 255), font_small)
+    frame = put_text_rus(frame, f"Порог: {thresh:.2f}", (right_x, int(30 * scale)), (0, 255, 0), font_small)
     
     perclos_percent = int(perclos * 100)
-    bar_width = int(perclos_percent * 2)
-    cv2.rectangle(frame, (right_x, 60), (right_x + bar_width, 75), (0, 255, 0), -1)
-    cv2.rectangle(frame, (right_x, 60), (right_x + 150, 75), (255, 255, 255), 1)
-    frame = put_text_rus(frame, f"PERCLOS: {perclos_percent}%", (right_x, 82), (255, 255, 0), FONT_SMALL)
+    bar_width = int(perclos_percent * 1.5 * scale)
+    bar_full_width = int(150 * scale)
+    cv2.rectangle(frame, (right_x, int(60 * scale)), (right_x + bar_width, int(75 * scale)), (0, 255, 0), -1)
+    cv2.rectangle(frame, (right_x, int(60 * scale)), (right_x + bar_full_width, int(75 * scale)), (255, 255, 255), 1)
+    frame = put_text_rus(frame, f"PERCLOS: {perclos_percent}%", (right_x, int(82 * scale)), (255, 255, 0), font_small)
     
-    frame = put_text_rus(frame, f"Морганий: {blinks}", (right_x, 110), (255, 255, 255), FONT_SMALL)
+    frame = put_text_rus(frame, f"Морганий: {blinks}", (right_x, int(110 * scale)), (255, 255, 255), font_small)
     
     return frame
 
@@ -302,7 +360,9 @@ try:
                     EYE_AR_THRESH = max_EAR * 0.8
                     calibrated = True
                     save_profile(USER_ID, max_EAR, EYE_AR_THRESH)
-                frame = put_text_rus(frame, "Калибровка...", (10, 60), (0, 255, 255), FONT)
+                scale = get_ui_scale(frame)
+                font_calib = get_scaled_font(20, scale)
+                frame = put_text_rus(frame, "Калибровка...", (int(10 * scale), int(60 * scale)), (0, 255, 255), font_calib)
                 continue
 
             closed_condition = ear < (EYE_AR_THRESH - MIN_EAR_DROP)
