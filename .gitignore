@@ -5,3 +5,5 @@
    venv/
    .idea/
    *.sql.bak.env
+.env
+.env.*
