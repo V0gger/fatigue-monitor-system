@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель диспетчера - Мониторинг усталости</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: #f5f5f5; 
+            padding: 20px;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            flex: 1;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 { color: #7f8c8d; font-size: 14px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #2c3e50; }
+        .card { 
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-online { color: #27ae60; font-weight: bold; }
+        .status-offline { color: #95a5a6; }
+        .severity-2 { color: #e74c3c; font-weight: bold; }
+        .severity-1 { color: #f39c12; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 10px;
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px; 
+            text-align: left; 
+        }
+        th { 
+            background: #34495e; 
+            color: white; 
+        }
+        tr:nth-child(even) { background: #f9f9f9; }
+        tr:hover { background: #ecf0f1; }
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
+        .refresh-btn:hover { background: #2980b9; }
+        .last-update { color: #7f8c8d; font-size: 12px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🖥️ Панель диспетчера</h1>
+        <p>Система мониторинга усталости операторов</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <h3>👥 Всего операторов</h3>
+            <div class="value" id="total-operators">-</div>
+        </div>
+        <div class="stat-card">
+            <h3>🟢 Активные сессии</h3>
+            <div class="value" id="active-sessions">-</div>
+        </div>
+        <div class="stat-card">
+            <h3>⚠️ Инциденты сегодня</h3>
+            <div class="value" id="today-incidents">-</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>👥 Операторы онлайн <button class="refresh-btn" onclick="loadData()">🔄 Обновить</button></h2>
+        <table id="operators-table">
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Статус</th>
+                    <th>Начало смены</th>
+                    <th>Инциденты</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="4">Загрузка...</td></tr>
+            </tbody>
+        </table>
+        <div class="last-update" id="operators-update"></div>
+    </div>
+    
+    <div class="card">
+        <h2>⚠️ Последние инциденты</h2>
+        <table id="incidents-table">
+            <thead>
+                <tr>
+                    <th>Оператор</th>
+                    <th>Тип</th>
+                    <th>Время</th>
+                    <th>Уровень</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="4">Загрузка...</td></tr>
+            </tbody>
+        </table>
+        <div class="last-update" id="incidents-update"></div>
+    </div>
+    
+    <script>
+        function loadData() {
+            // Статистика
+            fetch('/api/stats')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('total-operators').textContent = data.total_operators;
+                    document.getElementById('active-sessions').textContent = data.active_sessions;
+                    document.getElementById('today-incidents').textContent = data.today_incidents;
+                });
+            
+            // Операторы
+            fetch('/api/operators')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.querySelector('#operators-table tbody');
+                    tbody.innerHTML = '';
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4">Нет активных операторов</td></tr>';
+                    } else {
+                        data.forEach(op => {
+                            const row = `<tr>
+                                <td>${op.login}</td>
+                                <td class="${op.status === 'active' ? 'status-online' : 'status-offline'}">
+                                    ${op.status === 'active' ? '🟢 Онлайн' : '⚫ Офлайн'}
+                                </td>
+                                <td>${op.start_time}</td>
+                                <td>${op.incidents}</td>
+                            </tr>`;
+                            tbody.innerHTML += row;
+                        });
+                    }
+                    document.getElementById('operators-update').textContent = 
+                        'Обновлено: ' + new Date().toLocaleTimeString();
+                });
+            
+            // Инциденты
+            fetch('/api/incidents')
+                .then(r => r.json())
+                .then(data => {
+                    const tbody = document.querySelector('#incidents-table tbody');
+                    tbody.innerHTML = '';
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4">Инцидентов нет</td></tr>';
+                    } else {
+                        data.forEach(inc => {
+                            const typeNames = {
+                                'blink': 'Моргание',
+                                'long_blink': 'Длительное моргание',
+                                'microsleep': '😴 Микросон',
+                                'perclos_alert': '⚠️ Усталость (PERCLOS)'
+                            };
+                            const row = `<tr>
+                                <td>${inc.login}</td>
+                                <td>${typeNames[inc.type] || inc.type}</td>
+                                <td>${inc.time}</td>
+                                <td class="severity-${inc.severity}">
+                                    ${inc.severity === 2 ? '🔴 Критический' : '🟡 Предупреждение'}
+                                </td>
+                            </tr>`;
+                            tbody.innerHTML += row;
+                        });
+                    }
+                    document.getElementById('incidents-update').textContent = 
+                        'Обновлено: ' + new Date().toLocaleTimeString();
+                });
+        }
+        
+        // Автообновление каждые 10 секунд
+        loadData();
+        setInterval(loadData, 10000);
+    </script>
+</body>
+</html>
